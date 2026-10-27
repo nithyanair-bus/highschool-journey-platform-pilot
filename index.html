@@ -42,9 +42,12 @@ small,.mute{color:var(--mute)}
 <body>
 <div id="app"></div>
 <script>
+window.addEventListener('error', e => { const a = document.getElementById('app'); if (a && !a.innerHTML.trim()) a.innerHTML = '<main><h2>Something went wrong</h2><p style="color:#b3261e">' + String(e.message).replace(/</g,'&lt;') + '</p></main>'; });
+window.addEventListener('unhandledrejection', e => { const a = document.getElementById('app'); if (a && !a.innerHTML.trim()) a.innerHTML = '<main><h2>Could not connect</h2><p style="color:#b3261e">' + String((e.reason && e.reason.message) || e.reason).replace(/</g,'&lt;') + '</p></main>'; });
+if (!window.supabase) { document.getElementById('app').innerHTML = '<main><h2>Could not load the database library</h2><p>Your browser or network blocked cdn.jsdelivr.net. Turn off ad blockers or try another network, then reload.</p></main>'; throw new Error('supabase-js not loaded'); }
 // 1. Paste your Supabase project values (Project Settings > API). The anon key is safe in the browser.
-const SUPABASE_URL = "YOUR_SUPABASE_URL";
-const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+const SUPABASE_URL = "https://lambrglnsxhlnmlmjeov.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbWJyZ2xuc3hobG5tbG1qZW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNjEwNjEsImV4cCI6MjEwODYzNzA2MX0.dwGRD4VdoEHlmMoljS3fKbdwJAIiSnE2eqgHudyhkBM";
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let me, sid, kids = [], tab, chat = [];
@@ -217,7 +220,7 @@ document.addEventListener('click', async e => {
   try { await ACT[b.dataset.act](b.dataset, b); } catch (err) { alert(err.message || 'Something went wrong.'); }
 });
 if (SUPABASE_URL.startsWith('YOUR_')) $('#app').innerHTML = '<main><h2>Setup needed</h2><p>Add your Supabase URL and anon key at the top of the script in index.html.</p></main>';
-else boot();
+else boot().catch(e => authView('Could not connect: ' + e.message));
 </script>
 </body>
 </html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>High School Journey Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--ink:#16263a;--paper:#f6f8fa;--card:#fff;--line:#d5dde5;--teal:#0e7c6b;--sun:#f0b429;--mute:#5d6b7a}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 Figtree,system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--ink);color:#fff}
+header b{font-size:1.15rem;font-weight:800}header span{color:#b9c6d3;font-size:.9rem}
+nav{display:flex;gap:4px;overflow-x:auto;padding:8px 16px;background:#fff;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;padding:8px 12px;border-radius:8px;font:inherit;color:var(--mute);cursor:pointer;white-space:nowrap}
+nav button.on{background:var(--ink);color:#fff}
+main{max-width:820px;margin:0 auto;padding:20px 16px 60px}
+h2{font-size:1.7rem;font-weight:800;margin:.2em 0 .6em}h3{margin:0 0 .5em}
+section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.row:last-child{border-bottom:0}
+input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);max-width:100%}
+button{font:inherit;cursor:pointer}
+.btn,header button{background:var(--teal);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600}
+header button{background:transparent;border:1px solid #6b7d90}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 12px}
+.bar i{display:block;height:100%;background:var(--sun)}
+small,.mute{color:var(--mute)}
+.tag{background:#e3f4f0;color:var(--teal);border-radius:6px;padding:2px 8px;font-size:.85rem}
+.warn{background:#fdf1d3;color:#7a5600}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.grid>div{border:1px solid var(--line);border-radius:10px;padding:12px}
+.chat p{margin:.4em 0;padding:8px 12px;border-radius:10px;max-width:85%}
+.chat .me{background:#e3f4f0;margin-left:auto}.chat .ai{background:#eef1f4}
+.err{color:#b3261e;margin:8px 0}
+.auth{max-width:380px;margin:8vh auto;padding:0 16px}.auth input,.auth select{width:100%;margin-bottom:8px}
+:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// 1. Paste your Supabase project values (Project Settings > API). The anon key is safe in the browser.
+const SUPABASE_URL = "YOUR_SUPABASE_URL";
+const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let me, sid, kids = [], tab, chat = [];
+const $ = q => document.querySelector(q);
+const val = id => $('#' + id).value.trim();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const bar = (n, t) => `<div class="bar"><i style="width:${Math.min(100, n / t * 100)}%"></i></div>`;
+const ok = r => { if (r.error) throw r.error; return r.data; };
+
+const TABS = {
+  student: [['home','Home'],['roadmap','Roadmap'],['goals','Goals'],['vault','Vault'],['opps','Opportunities'],['coach','AI Coach'],['survey','Feedback']],
+  parent: [['parent','Parent view'],['roadmap','Roadmap'],['survey','Feedback']]
+};
+const ROADMAP = [
+  ['Freshman (9th)', ['GPA baseline target','Join 2 clubs','PSAT 8/9 intro','Start resume log']],
+  ['Sophomore (10th)', ['First AP/Honors course','Club leadership role','Practice PSAT/NMSQT','Summer internship search']],
+  ['Junior (11th)', ['SAT/ACT window','Draft college list','Teacher recommendations','Capstone project']],
+  ['Senior (12th)', ['Common App essays','FAFSA and scholarships','Early decision','Final college choice']]
+];
+
+function authView(msg = '') {
+  $('#app').innerHTML = `<div class="auth"><h2>Journey Suite</h2><p class="mute">Plan freshman year together.</p>
+  <input id="em" type="email" placeholder="Email" autocomplete="email"><input id="pw" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+  <input id="nm" placeholder="Full name (sign up only)">
+  <select id="rl"><option value="student">I'm a student</option><option value="parent">I'm a parent</option></select>
+  <select id="st"><option>STEM</option><option>Pre-Med</option><option>Business/Law</option><option>Arts</option></select>
+  <p class="err" id="err">${esc(msg)}</p>
+  <button class="btn" data-act="login">Log in</button> <button class="btn" style="background:var(--ink)" data-act="signup">Sign up</button></div>`;
+}
+
+async function boot() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return authView();
+  const p = ok(await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle());
+  if (!p) { await sb.auth.signOut(); return authView('No profile found. Please sign up again.'); }
+  me = p;
+  if (p.role === 'student') {
+    sid = p.id;
+    const ms = ok(await sb.from('milestones').select('id'));
+    ok(await sb.from('student_milestones').upsert(ms.map(m => ({ student_id: sid, milestone_id: m.id })), { ignoreDuplicates: true }));
+  } else {
+    const rows = ok(await sb.from('parent_links').select('student:profiles!parent_links_student_id_fkey(id,full_name,stream,gpa)').eq('parent_id', p.id));
+    kids = rows.map(r => r.student); sid = kids[0]?.id || null;
+  }
+  go(p.role === 'student' ? 'home' : 'parent');
+}
+
+function shell(html) {
+  $('#app').innerHTML = `<header><b>Journey Suite</b><span>${esc(me.full_name)} (${me.role})</span><button data-act="out">Sign out</button></header>
+  <nav>${TABS[me.role].map(([k, l]) => `<button data-act="go" data-k="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</nav><main>${html}</main>`;
+}
+async function go(k) {
+  tab = k; shell('<p class="mute">Loading...</p>');
+  try { shell(await VIEWS[k]()); } catch (e) { shell(`<p class="err">${esc(e.message)}</p>`); }
+}
+
+const hoursOf = h => h.reduce((s, x) => s + Number(x.hours), 0);
+
+const VIEWS = {
+  async home() {
+    const [t, m, h, n] = await Promise.all([
+      sb.from('tasks').select('*').eq('student_id', sid).order('created_at'),
+      sb.from('student_milestones').select('done,milestone_id,milestones(title,sort)').eq('student_id', sid),
+      sb.from('service_hours').select('hours').eq('student_id', sid),
+      sb.from('parent_notes').select('body').eq('student_id', sid).order('created_at', { ascending: false }).limit(1)
+    ]);
+    const ms = ok(m).sort((a, b) => a.milestones.sort - b.milestones.sort), done = ms.filter(x => x.done).length, hrs = hoursOf(ok(h));
+    const note = ok(n)[0];
+    return `<h2>Welcome back, ${esc(me.full_name.split(' ')[0])}</h2>
+    ${note ? `<section class="warn"><b>Note from your parent:</b> ${esc(note.body)}</section>` : ''}
+    <section><h3>This week</h3>${ok(t).map(x => `<div class="row"><label><input type="checkbox" data-act="task" data-id="${x.id}" ${x.done ? 'checked' : ''}> ${esc(x.title)}</label><small>${esc(x.due)}</small></div>`).join('') || '<p class="mute">No tasks yet. Add your first one below.</p>'}
+    <div class="row"><input id="tt" placeholder="New task"><input id="td" placeholder="Due (e.g. Friday)"><button class="btn" data-act="addTask">Add task</button></div></section>
+    <section><h3>Semester 1 milestones: ${done} of 10</h3>${bar(done, 10)}${ms.map(x => `<div class="row"><label><input type="checkbox" data-act="ms" data-id="${x.milestone_id}" ${x.done ? 'checked' : ''}> ${esc(x.milestones.title)}</label></div>`).join('')}</section>
+    <section><h3>Service hours: ${hrs} of 20</h3>${bar(hrs, 20)}</section>
+    <section><h3>GPA</h3><input id="gpa" type="number" step="0.01" min="0" max="5" value="${me.gpa ?? ''}" placeholder="e.g. 3.88"> <button class="btn" data-act="gpa">Save GPA</button></section>`;
+  },
+  async roadmap() {
+    return `<h2>4-year roadmap</h2><div class="grid">${ROADMAP.map(([y, l]) => `<div><h3>${y}</h3>${l.map(i => `<p style="margin:.3em 0">${i}</p>`).join('')}</div>`).join('')}</div>`;
+  },
+  async goals() {
+    const g = ok(await sb.from('goals').select('*').eq('student_id', sid).order('deadline'));
+    return `<h2>Goal hub</h2><section>${g.map(x => `<div class="row"><div><b>${esc(x.title)}</b> <span class="tag">${esc(x.category)}</span><br><small>${esc(x.next_action)} | Due ${esc(x.deadline || 'no date')}</small></div><button class="btn" data-act="goalStatus" data-id="${x.id}" data-s="${esc(x.status)}">${esc(x.status)}</button></div>`).join('') || '<p class="mute">No goals yet.</p>'}</section>
+    <section><h3>Add a goal</h3><div class="row"><input id="gt" placeholder="Goal title"><select id="gc"><option>Academic</option><option>Extracurricular</option><option>Volunteering</option></select><input id="gd" type="date"></div>
+    <div class="row"><input id="gn" placeholder="Next action" style="flex:1"><button class="btn" data-act="addGoal">Add goal</button></div></section>`;
+  },
+  async vault() {
+    const [h, a] = await Promise.all([sb.from('service_hours').select('*').eq('student_id', sid), sb.from('achievements').select('*').eq('student_id', sid)]);
+    return `<h2>Achievement vault</h2><section><h3>Service hours</h3>${ok(h).map(x => `<div class="row"><span>${esc(x.activity)}: ${x.hours} hrs</span><span class="tag">${x.verified ? 'Verified' : 'Waiting for parent'}</span></div>`).join('') || '<p class="mute">Log your first hours below.</p>'}
+    <div class="row"><input id="ha" placeholder="Activity"><input id="hh" type="number" min="0.5" step="0.5" placeholder="Hours"><button class="btn" data-act="addHours">Log hours</button></div></section>
+    <section><h3>Awards, skills and badges</h3>${ok(a).map(x => `<div class="row"><span>${esc(x.title)}</span><span class="tag">${esc(x.kind)}</span></div>`).join('') || '<p class="mute">Nothing saved yet.</p>'}
+    <div class="row"><select id="ak"><option>Award</option><option>Skill</option><option>Badge</option></select><input id="at" placeholder="Title" style="flex:1"><button class="btn" data-act="addAch">Save</button></div></section>`;
+  },
+  async opps() {
+    const [o, s] = await Promise.all([sb.from('opportunities').select('*'), sb.from('saved_opportunities').select('opportunity_id').eq('student_id', sid)]);
+    const saved = new Set(ok(s).map(x => x.opportunity_id));
+    return `<h2>Opportunities</h2>${ok(o).map(x => `<section><span class="tag">${esc(x.kind)}</span><h3>${esc(x.title)}</h3><p>${esc(x.detail)}<br><small>Deadline: ${esc(x.deadline)}</small></p><button class="btn" data-act="save" data-id="${x.id}" ${saved.has(x.id) ? 'disabled' : ''}>${saved.has(x.id) ? 'Saved' : 'Save to goals'}</button></section>`).join('')}`;
+  },
+  async coach() {
+    return `<h2>AI coach</h2><section class="chat"><p class="ai">Hi ${esc(me.full_name.split(' ')[0])}! Ask me about courses, clubs, or your resume.</p>${chat.map(c => `<p class="${c.r}">${esc(c.t)}</p>`).join('')}
+    <div class="row"><input id="q" placeholder="Ask your coach" style="flex:1"><button class="btn" data-act="ask">Send</button></div></section>`;
+  },
+  async parent() {
+    if (!sid) return `<h2>Link your student</h2><section><p>Ask your student for the link code shown on their Feedback tab, then enter it here.</p><div class="row"><input id="lc" placeholder="Link code"><button class="btn" data-act="link">Link student</button></div></section>`;
+    const [m, h, g, n] = await Promise.all([
+      sb.from('student_milestones').select('done').eq('student_id', sid), sb.from('service_hours').select('*').eq('student_id', sid),
+      sb.from('goals').select('*').eq('student_id', sid).neq('status', 'Completed').order('deadline'),
+      sb.from('parent_notes').select('body,created_at').eq('student_id', sid).order('created_at', { ascending: false }).limit(3)]);
+    const k = kids[0], hs = ok(h), ver = hoursOf(hs.filter(x => x.verified)), pend = hs.filter(x => !x.verified), done = ok(m).filter(x => x.done).length;
+    return `<h2>${esc(k.full_name)}'s progress</h2><div class="grid">
+    <div><small>GPA baseline</small><h3>${k.gpa ?? 'Not set'}</h3></div><div><small>Milestones</small><h3>${done} of 10</h3></div><div><small>Verified hours</small><h3>${ver} of 20</h3></div></div><br>
+    <section><h3>Hours to verify</h3>${pend.map(x => `<div class="row"><span>${esc(x.activity)}: ${x.hours} hrs</span><button class="btn" data-act="verify" data-id="${x.id}">Verify</button></div>`).join('') || '<p class="mute">Nothing waiting.</p>'}</section>
+    <section><h3>Upcoming deadlines</h3>${ok(g).slice(0, 3).map(x => `<div class="row"><span>${esc(x.title)}</span><small>${esc(x.deadline || 'no date')}</small></div>`).join('') || '<p class="mute">No open goals.</p>'}</section>
+    <section><h3>Encouragement board</h3>${ok(n).map(x => `<p>${esc(x.body)}</p>`).join('')}<div class="row"><input id="pn" placeholder="Write a note" style="flex:1"><button class="btn" data-act="note">Post note</button></div></section>`;
+  },
+  async survey() {
+    return `<h2>Help shape this platform</h2>${me.role === 'student' ? `<section><small>Your parent link code</small><h3>${esc(me.link_code)}</h3></section>` : ''}
+    <section><div class="row"><label>What would you pay per month?</label><select id="sw"><option>Free only</option><option>Under $5</option><option>$5 to $10</option><option>Over $10</option></select></div>
+    <div class="row"><label>Interested in partner tutoring and SAT prep offers?</label><select id="sm"><option>Yes</option><option>Maybe</option><option>No</option></select></div>
+    <div class="row"><label>Join the pilot cohort?</label><select id="sp"><option>Yes</option><option>Maybe</option><option>No</option></select></div>
+    <p>Most useful features:</p>${['Roadmap','Goal hub','Achievement vault','Opportunity tracker','AI coach','Parent view'].map(f => `<label style="display:block"><input type="checkbox" class="ft" value="${f}"> ${f}</label>`).join('')}
+    <p><button class="btn" data-act="survey">Send feedback</button></p></section>`;
+  }
+};
+
+const run = (table, obj) => sb.from(table).insert(obj).then(ok);
+const ACT = {
+  go: d => go(d.k),
+  async out() { await sb.auth.signOut(); me = sid = null; authView(); },
+  async login() {
+    const r = await sb.auth.signInWithPassword({ email: val('em'), password: val('pw') });
+    if (r.error) return $('#err').textContent = r.error.message; boot();
+  },
+  async signup() {
+    if (!val('nm')) return $('#err').textContent = 'Enter your full name to sign up.';
+    const r = await sb.auth.signUp({ email: val('em'), password: val('pw') });
+    if (r.error) return $('#err').textContent = r.error.message;
+    if (!r.data.session) return $('#err').textContent = 'Check your email to confirm, then log in.';
+    ok(await sb.from('profiles').insert({ id: r.data.user.id, role: val('rl'), full_name: val('nm'), stream: val('st') })); boot();
+  },
+  async addTask() { if (val('tt')) { await run('tasks', { student_id: sid, title: val('tt'), due: val('td') }); go(tab); } },
+  async task(d, b) { ok(await sb.from('tasks').update({ done: b.checked }).eq('id', d.id)); go(tab); },
+  async ms(d, b) { ok(await sb.from('student_milestones').update({ done: b.checked }).eq('student_id', sid).eq('milestone_id', d.id)); go(tab); },
+  async gpa() { const g = parseFloat(val('gpa')); if (isNaN(g)) return; ok(await sb.from('profiles').update({ gpa: g }).eq('id', sid)); me.gpa = g; go(tab); },
+  async addGoal() { if (val('gt')) { await run('goals', { student_id: sid, title: val('gt'), category: val('gc'), deadline: val('gd') || null, next_action: val('gn') }); go(tab); } },
+  async goalStatus(d) { const n = { 'Planning': 'In Progress', 'In Progress': 'Completed', 'Completed': 'Planning' }[d.s]; ok(await sb.from('goals').update({ status: n }).eq('id', d.id)); go(tab); },
+  async addHours() { if (val('ha') && val('hh')) { await run('service_hours', { student_id: sid, activity: val('ha'), hours: Number(val('hh')) }); go(tab); } },
+  async addAch() { if (val('at')) { await run('achievements', { student_id: sid, kind: val('ak'), title: val('at') }); go(tab); } },
+  async save(d) {
+    const o = ok(await sb.from('opportunities').select('*').eq('id', d.id).single());
+    await run('saved_opportunities', { student_id: sid, opportunity_id: Number(d.id) });
+    await run('goals', { student_id: sid, title: o.title, category: o.kind, next_action: 'Review requirements', status: 'Planning' }); go(tab);
+  },
+  async ask() {
+    const q = val('q'); if (!q) return;
+    chat.push({ r: 'me', t: q }); chat.push({ r: 'ai', t: 'Thinking...' }); await go('coach');
+    const r = await sb.functions.invoke('coach', { body: { message: q, stream: me.stream } });
+    chat[chat.length - 1].t = r.error ? 'The coach is unavailable. Check the function setup.' : r.data.reply; go('coach');
+  },
+  async link() { ok(await sb.rpc('link_student', { code: val('lc') })); boot(); },
+  async verify(d) { ok(await sb.rpc('verify_hours', { hour_id: d.id })); go(tab); },
+  async note() { if (val('pn')) { await run('parent_notes', { parent_id: me.id, student_id: sid, body: val('pn') }); go(tab); } },
+  async survey() {
+    await run('survey_responses', { user_id: me.id, role: me.role, wtp: val('sw'), marketplace_interest: val('sm'), pilot_interest: val('sp'), features: [...document.querySelectorAll('.ft:checked')].map(x => x.value) });
+    shell('<h2>Thank you!</h2><p>Your feedback was saved.</p>');
+  }
+};
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  try { await ACT[b.dataset.act](b.dataset, b); } catch (err) { alert(err.message || 'Something went wrong.'); }
+});
+if (SUPABASE_URL.startsWith('YOUR_')) $('#app').innerHTML = '<main><h2>Setup needed</h2><p>Add your Supabase URL and anon key at the top of the script in index.html.</p></main>';
+else boot();
+</script>
+</body>
+</html>

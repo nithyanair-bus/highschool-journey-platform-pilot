@@ -35,6 +35,11 @@ small,.mute{color:var(--mute)}
 .chat p{margin:.4em 0;padding:8px 12px;border-radius:10px;max-width:85%}
 .chat .me{background:#e3f4f0;margin-left:auto}.chat .ai{background:#eef1f4}
 .err{color:#b3261e;margin:8px 0}
+footer{max-width:820px;margin:0 auto;padding:0 16px 40px;font-size:.9rem;color:var(--mute)}
+details{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#fff;margin:10px 0;text-align:left}
+summary{cursor:pointer;font-weight:600}
+.notice p,.notice li{font-size:.92rem;margin:.4em 0}
+.consent{display:flex;gap:8px;align-items:flex-start;font-size:.92rem;margin:8px 0}.consent input{width:auto;margin-top:4px}
 .auth{max-width:380px;margin:8vh auto;padding:0 16px}.auth input,.auth select{width:100%;margin-bottom:8px}
 :focus-visible{outline:3px solid var(--sun);outline-offset:2px}
 </style>
@@ -49,6 +54,17 @@ if (!window.supabase) { document.getElementById('app').innerHTML = '<main><h2>Co
 const SUPABASE_URL = "https://lambrglnsxhlnmlmjeov.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhbWJyZ2xuc3hobG5tbG1qZW92Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwNjEwNjEsImV4cCI6MjEwODYzNzA2MX0.dwGRD4VdoEHlmMoljS3fKbdwJAIiSnE2eqgHudyhkBM";
 
+const CONTACT = "YOUR_CONTACT_EMAIL"; // privacy questions and deletion requests go here
+const CONSENT_VERSION = "pilot-v1";
+const NOTICE = `<div class="notice"><h3>Privacy notice (pilot)</h3>
+<p><b>What this is:</b> a class project run by Nithya Nair for the Entrepreneurial Action Project course. It helps freshmen plan high school. It is a small pilot, not a finished product.</p>
+<p><b>What we collect:</b> name, email, role, career stream, GPA (only if entered), tasks, goals, service hours, achievements, parent notes, and survey answers.</p>
+<p><b>Who can see it:</b></p><ul><li>The student.</li><li>A parent or guardian the student links with their link code. They can see milestones, GPA, hours, and goals, verify hours, and post notes.</li><li>The pilot team, only to run and improve the pilot.</li></ul>
+<p><b>Services we use:</b> Supabase stores the data, encrypted. The AI Coach sends the message a student types, plus their career stream, to Anthropic to write a reply. Please do not type personal details such as an address or school name into the coach.</p>
+<p><b>What we do not do:</b> sell data, show ads, or share it with other companies for their own use.</p>
+<p><b>Keeping and deleting:</b> pilot data is deleted when the pilot ends. A parent or student can ask for deletion at any time.</p>
+<p><b>Consent:</b> a parent or guardian must agree before a student uses this app. You can withdraw consent at any time.</p>
+<p><b>Questions or deletion requests:</b> ${CONTACT}</p></div>`;
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let me, sid, kids = [], tab, chat = [];
 const $ = q => document.querySelector(q);
@@ -74,6 +90,8 @@ function authView(msg = '') {
   <input id="nm" placeholder="Full name (sign up only)">
   <select id="rl"><option value="student">I'm a student</option><option value="parent">I'm a parent</option></select>
   <select id="st"><option>STEM</option><option>Pre-Med</option><option>Business/Law</option><option>Arts</option></select>
+  <label class="consent"><input type="checkbox" id="cs"><span>A parent or guardian has read the privacy notice and agrees to this account. (Parents: I am that parent or guardian.)</span></label>
+  <details><summary>Read the privacy notice</summary>${NOTICE}</details>
   <p class="err" id="err">${esc(msg)}</p>
   <button class="btn" data-act="login">Log in</button> <button class="btn" style="background:var(--ink)" data-act="signup">Sign up</button></div>`;
 }
@@ -97,7 +115,7 @@ async function boot() {
 
 function shell(html) {
   $('#app').innerHTML = `<header><b>Journey Suite</b><span>${esc(me.full_name)} (${me.role})</span><button data-act="out">Sign out</button></header>
-  <nav>${TABS[me.role].map(([k, l]) => `<button data-act="go" data-k="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</nav><main>${html}</main>`;
+  <nav>${TABS[me.role].map(([k, l]) => `<button data-act="go" data-k="${k}" class="${k === tab ? 'on' : ''}">${l}</button>`).join('')}</nav><main>${html}</main><footer><details><summary>Privacy notice</summary>${NOTICE}</details></footer>`;
 }
 async function go(k) {
   tab = k; shell('<p class="mute">Loading...</p>');
@@ -146,7 +164,7 @@ const VIEWS = {
     return `<h2>Opportunities</h2>${ok(o).map(x => `<section><span class="tag">${esc(x.kind)}</span><h3>${esc(x.title)}</h3><p>${esc(x.detail)}<br><small>Deadline: ${esc(x.deadline)}</small></p><button class="btn" data-act="save" data-id="${x.id}" ${saved.has(x.id) ? 'disabled' : ''}>${saved.has(x.id) ? 'Saved' : 'Save to goals'}</button></section>`).join('')}`;
   },
   async coach() {
-    return `<h2>AI coach</h2><section class="chat"><p class="ai">Hi ${esc(me.full_name.split(' ')[0])}! Ask me about courses, clubs, or your resume.</p>${chat.map(c => `<p class="${c.r}">${esc(c.t)}</p>`).join('')}
+    return `<h2>AI coach</h2><p class="mute"><small>Do not type personal details like your address or school name. Your messages are sent to Anthropic's AI to write replies.</small></p><section class="chat"><p class="ai">Hi ${esc(me.full_name.split(' ')[0])}! Ask me about courses, clubs, or your resume.</p>${chat.map(c => `<p class="${c.r}">${esc(c.t)}</p>`).join('')}
     <div class="row"><input id="q" placeholder="Ask your coach" style="flex:1"><button class="btn" data-act="ask">Send</button></div></section>`;
   },
   async parent() {
@@ -182,10 +200,11 @@ const ACT = {
   },
   async signup() {
     if (!val('nm')) return $('#err').textContent = 'Enter your full name to sign up.';
+    if (!$('#cs').checked) return $('#err').textContent = 'Parent or guardian consent is required to sign up.';
     const r = await sb.auth.signUp({ email: val('em'), password: val('pw') });
     if (r.error) return $('#err').textContent = r.error.message;
     if (!r.data.session) return $('#err').textContent = 'Check your email to confirm, then log in.';
-    ok(await sb.from('profiles').insert({ id: r.data.user.id, role: val('rl'), full_name: val('nm'), stream: val('st') })); boot();
+    ok(await sb.from('profiles').insert({ id: r.data.user.id, role: val('rl'), full_name: val('nm'), stream: val('st'), consent_at: new Date().toISOString(), consent_version: CONSENT_VERSION })); boot();
   },
   async addTask() { if (val('tt')) { await run('tasks', { student_id: sid, title: val('tt'), due: val('td') }); go(tab); } },
   async task(d, b) { ok(await sb.from('tasks').update({ done: b.checked }).eq('id', d.id)); go(tab); },
